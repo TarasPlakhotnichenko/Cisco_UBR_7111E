@@ -1,0 +1,258 @@
+! Эта информация больше предназнячена для меня самого, если кому-то она окажется
+! полезной - буду рад.
+!
+!Работающая тестовая конфигурация для Cisco uBR7111E - универсальный широкополосный
+! маршрутизатор. Коротко говоря, предназначен для передачи данных по телевизионным
+! кабельным сетям - стандарт DOCSIS.
+! Внешний dhcp сервер, ppp сессии для AUX порта, ssh, rsh управление, 
+! ip accounting, netflow, профили модуляции, netflow, pppoe. 
+!
+!
+version 12.2
+service timestamps debug uptime
+service timestamps log datetime localtime
+service password-encryption
+service udp-small-servers max-servers no-limit
+!
+hostname ubr1
+!
+boot system flash disk0:ubr7100-ik8s-mz.122-15.BC1b.bin
+logging queue-limit 100
+enable secret 5 XXXX
+enable password 7 XXXXX
+!
+username admin password 7 XXXXX
+username dialup password 7 XXXXX
+username traffic password 7 XXXXX
+cable modem remote-query 30 test
+cable modem max-cpe 5
+cable spectrum-group 1 frequency 24000000 12
+cable modulation-profile 2 request 0 16 0 8 16qam scrambler 152 no-diff 128 fixed uw16
+cable modulation-profile 2 initial 5 34 0 48 16qam scrambler 152 no-diff 256 fixed uw16
+cable modulation-profile 2 station 5 34 0 48 16qam scrambler 152 no-diff 256 fixed uw16
+cable modulation-profile 2 short 6 75 6 8 16qam scrambler 152 no-diff 144 fixed uw8
+cable modulation-profile 2 long 8 220 0 8 16qam scrambler 152 no-diff 160 fixed uw8
+cable modulation-profile 3 request 0 16 0 8 qpsk scrambler 152 no-diff 64 fixed uw16
+cable modulation-profile 3 initial 5 34 0 48 qpsk scrambler 152 no-diff 128 fixed uw16
+cable modulation-profile 3 station 5 34 0 48 qpsk scrambler 152 no-diff 128 fixed uw16
+cable modulation-profile 3 short 7 76 7 8 16qam scrambler 152 no-diff 144 shortened uw16
+cable modulation-profile 3 long 9 220 0 8 16qam scrambler 152 no-diff 160 shortened uw16
+no cable qos permission create
+no cable qos permission update
+cable qos permission modems
+cable time-server
+aaa new-model
+!
+!
+aaa authentication login ssh local
+aaa authentication login AUX local
+aaa authentication login CONSOLE local
+aaa authentication ppp cisco-radius group radius
+aaa authentication ppp ppp_aux local
+aaa authorization network cisco-radius group radius 
+aaa accounting delay-start 
+aaa accounting update newinfo
+aaa accounting network cisco-radius start-stop group radius
+aaa session-id common
+ip subnet-zero
+no ip source-route
+ip rcmd rsh-enable
+ip rcmd remote-host traffic 172.18.1.202 root enable
+ip rcmd source-interface FastEthernet0/0
+ip flow-cache entries 10000
+ip flow-cache feature-accelerate
+!
+!
+ip cef
+ip domain name tkt1.zvezda
+ip host traffic 172.18.1.202
+ip name-server 172.18.1.202
+ip dhcp ping packets 1
+!
+ip ssh authentication-retries 2
+ip dhcp-server 172.18.1.202
+ip accounting-threshold 1000
+vpdn enable
+!
+vpdn-group 1
+ accept-dialin
+  protocol pppoe
+  virtual-template 1
+!
+no mpls ldp logging neighbor-changes
+!
+! 
+!
+modemcap entry whatever:MSC=&fs0=2
+!
+!
+!
+interface Loopback0
+ no ip address
+!
+interface FastEthernet0/0
+ ip address 172.18.1.12 255.255.255.0
+ ip access-group 101 in
+ ip directed-broadcast
+ ip route-cache flow
+ no ip mroute-cache
+ duplex full
+ speed 100
+ no cdp enable
+!
+interface FastEthernet0/1
+ ip address 192.168.0.1 255.255.255.0
+ ip directed-broadcast
+ ip route-cache flow
+ shutdown
+ duplex auto
+ speed auto
+ no cdp enable
+!
+interface Cable1/0
+ description power level for RF signal 45-63 dbmv
+ ip address 10.254.1.1 255.255.255.0 secondary
+ ip address 10.128.0.1 255.255.0.0
+ ip access-group 102 in
+ ip accounting output-packets
+ cable spectrum-group 1
+ cable downstream annex A
+ cable downstream modulation 256qam
+ cable downstream frequency 410000000
+ cable downstream channel-id 0
+ no cable downstream rf-shutdown
+ cable downstream rf-power 50
+ cable upstream 0 frequency 23600000
+ cable upstream 0 power-level 12
+ cable upstream 0 channel-width 3200000
+ cable upstream 0 minislot-size 4
+ cable upstream 0 modulation-profile 2
+ no cable upstream 0 s160-atp-workaround
+ no cable upstream 0 shutdown
+ cable upstream 1 channel-width 1600000
+ cable upstream 1 minislot-size 4
+ cable upstream 1 modulation-profile 1
+ no cable upstream 1 s160-atp-workaround
+ cable upstream 1 shutdown
+ cable upstream 2 channel-width 1600000
+ cable upstream 2 minislot-size 4
+ cable upstream 2 modulation-profile 1
+ no cable upstream 2 s160-atp-workaround
+ cable upstream 2 shutdown
+ cable upstream 3 channel-width 1600000
+ cable upstream 3 minislot-size 4
+ cable upstream 3 modulation-profile 1
+ no cable upstream 3 s160-atp-workaround
+ cable upstream 3 shutdown
+ cable source-verify dhcp
+ cable dhcp-giaddr policy
+ cable helper-address 172.18.1.202
+ cable privacy 40-bit-des
+ pppoe enable
+ no keepalive
+!
+interface Virtual-Template1
+ ip unnumbered FastEthernet0/0
+ ip mtu 1492
+ autodetect encapsulation ppp
+ peer default ip address pool pppoe_pool
+ ppp authentication pap chap cisco-radius
+ ppp authorization cisco-radius
+ ppp accounting cisco-radius
+ ppp timeout authentication 20
+ ppp timeout idle 3600
+!
+interface Async1
+ ip unnumbered FastEthernet0/0
+ encapsulation ppp
+ ip tcp header-compression
+ no ip mroute-cache
+ autodetect encapsulation ppp
+ async default routing
+ async mode interactive
+ peer default ip address pool dialup
+ no keepalive
+ ppp authentication pap ppp_aux
+!
+ip local pool dialup 172.18.1.203 172.18.1.204
+ip local pool pppoe_pool 172.18.1.205 172.18.1.206
+ip classless
+no ip forward-protocol udp netbios-ns
+ip route 0.0.0.0 0.0.0.0 172.18.1.1
+ip flow-export source FastEthernet0/0
+ip flow-export version 5
+ip flow-export destination 172.18.1.202 9996
+ip flow-aggregation cache destination-prefix
+ cache entries 2046
+ export destination 172.18.1.202 9996
+!
+no ip http server
+no ip http secure-server
+!
+!
+!
+logging trap debugging
+logging facility local4
+logging 172.18.1.202
+access-list 101 permit ip any any
+access-list 102 permit udp 10.254.1.0 0.0.0.255 any eq domain
+access-list 102 permit udp any any eq bootps
+access-list 102 permit udp 10.128.0.0 0.0.255.255 host 172.18.1.202 eq tftp
+access-list 102 permit udp 10.128.0.0 0.0.255.255 host 10.128.0.1 eq time
+access-list 102 permit tcp 10.254.1.0 0.0.0.255 host 172.18.1.1 gt 1024
+access-list 102 permit tcp host 10.254.1.7 any
+access-list 102 permit udp host 10.254.1.7 any
+access-list 102 permit udp any host 172.18.1.202
+access-list 102 permit udp any host 172.18.1.201
+access-list 102 permit icmp 10.254.1.0 0.0.0.255 10.254.1.0 0.0.0.255
+access-list 102 permit icmp 10.254.1.0 0.0.0.255 10.128.0.0 0.0.255.255
+access-list 102 permit udp 10.128.0.0 0.0.255.255 host 10.254.1.7
+access-list 102 deny   tcp 10.254.1.0 0.0.0.255 host 172.18.1.1 lt 1024
+access-list 102 deny   tcp 10.254.1.0 0.0.0.255 172.18.1.0 0.0.0.255
+access-list 102 permit tcp 10.254.1.0 0.0.0.255 any
+no cdp run
+!
+snmp-server community public RO
+snmp-server community test RO
+snmp-server enable traps tty
+snmp-server manager
+radius-server attribute nas-port format d
+radius-server host 172.18.1.202 auth-port 1812 acct-port 1813
+radius-server timeout 10
+radius-server key 7 XXXX
+radius-server authorization permit missing Service-Type
+alias exec scm show cable modem
+privilege exec level 8 show ip accounting checkpoint
+privilege exec level 8 show ip accounting
+privilege exec level 8 show ip
+privilege exec level 8 show
+privilege exec level 8 clear ip accounting checkpoint
+privilege exec level 8 clear ip accounting
+privilege exec level 8 clear ip
+privilege exec level 15 clear cable modem
+privilege exec level 15 clear cable
+privilege exec level 15 clear
+!
+line con 0
+ login authentication CONSOLE
+line aux 0
+ password 7 105A0C0A11
+ login authentication line
+ modem InOut
+ modem autoconfigure type whatever
+ autocommand  ppp
+ terminal-type vt100
+ transport preferred none
+ transport input all
+ stopbits 1
+ speed 38400
+ flowcontrol hardware
+line vty 0 4
+ exec-timeout 0 0
+ login authentication ssh
+line vty 5 15
+!
+scheduler allocate 3998 400
+ntp clock-period 17180050
+ntp server XXXXX
+end
